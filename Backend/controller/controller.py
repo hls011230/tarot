@@ -1,22 +1,85 @@
 from flask import Blueprint, request, jsonify
+import jwt
+from functools import wraps
 
 import db.db as db
 from .response import response
 
 bp = Blueprint('api', __name__, url_prefix='/api')
 
+# # JWT密钥
+# SECRET_KEY = 'your_secret_key'
+
+# # JWT认证装饰器
+# def token_required(f):
+#     @wraps(f)
+#     def decorated(*args, **kwargs):
+#         token = request.headers.get('Authorization')
+#         if not token:
+#             return response(data="Token is missing!", status_code=0)
+#         try:
+#             data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         except jwt.ExpiredSignatureError:
+#             return response(data="Token has expired!", status_code=0)
+#         except jwt.InvalidTokenError:
+#             return response(data="Token is invalid!", status_code=0)
+#         return f(*args, **kwargs)
+#     return decorated
+
+# 用户注册
+@bp.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data['username']
+    password = data['password']
+    email = data['email']
+    role = data.get('role', 'user')
+    status = data.get('status', 'active')
+    icon = data.get('icon', None)
+    user_id = db.register_user(username, password, email, role, status, icon)
+    if user_id is None:
+        return response(data="注册失败", status_code=0)
+    else:
+        return response(data={"user_id": user_id}, status_code=1)
+
+# 用户登录
+@bp.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data['username']
+    password = data['password']
+    user = db.login_user(username, password)
+    if user is None:
+        return response(data="登录失败", status_code=0)
+    else:
+        # 这里可以添加JWT生成逻辑
+        # token = jwt.encode({'user_id': user['id']}, SECRET_KEY, algorithm="HS256")
+        return response(data=user, status_code=1)
+    
+# 用户查询
+@bp.route('/get-user/<id>', methods=['GET'])
+def get_user(id):
+    user = db.get_user(id)
+    if user is None:
+        return response(data="查询失败", status_code=0)
+    else:
+        # 这里可以添加JWT生成逻辑
+        # token = jwt.encode({'user_id': user['id']}, SECRET_KEY, algorithm="HS256")
+        return response(data=user, status_code=1)
+    
+
 
 # 提交问题
 @bp.route('/submit-question', methods=['POST'])
+# @token_required
 def submit_question():
     data = request.json
     user_id = data['user_id']
-    img = data['img']
+    about = data['about']
     title = data['title']
     content = data['content']
     type = data['type']
-    tags = data['tags']
-    question_id = db.submit_question(user_id, img, title,content, type, tags)
+    question_id = db.submit_question(user_id, about, title, content, type)
     if question_id is None:
         return response(data="error", status_code=0)
     else:
@@ -40,8 +103,18 @@ def get_questions():
     else:
         return response(data=questions, status_code=1)
 
+# 查询某一问题
+@bp.route('/get-question-by-id/<id>', methods=['GET'])
+def get_question_by_id(id):
+    questions = db.get_question_by_id(id)
+    if not questions:
+        return response(data="error", status_code=0)
+    else:
+        return response(data=questions, status_code=1)
+
 # 提交评论
 @bp.route('/submit-comment', methods=['POST'])
+# @token_required
 def submit_comment():
     data = request.json
     user_id = data['user_id']
@@ -57,9 +130,8 @@ def submit_comment():
         return response(data={"comment_id": comment_id}, status_code=1)
 
 # 获取问题的所有评论
-@bp.route('/get-comments-by-question', methods=['GET'])
-def get_comments_by_question():
-    question_id = request.args.get("question_id")
+@bp.route('/get-comments-by-question/<question_id>', methods=['GET'])
+def get_comments_by_question(question_id):
     comments = db.get_comments_by_question(question_id)
     if not comments:
         return response(data="error", status_code=0)
@@ -68,6 +140,7 @@ def get_comments_by_question():
 
 # 修改问题状态
 @bp.route('/update-question-status', methods=['POST'])
+# @token_required
 def update_question_status():
     data = request.json
     question_id = data['question_id']

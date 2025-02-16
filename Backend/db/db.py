@@ -1,16 +1,18 @@
-import mysql.connector
+import pymysql
 import qrcode
+from flask import jsonify
 
-# 连接到 MySQL 数据库
-connection = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="root",
-    database="tarot"
-)
+db_config = {
+    'host':"localhost",
+    'user':"root",
+    'password':"root",
+    'database':"tarot",
+    'cursorclass': pymysql.cursors.DictCursor  # 返回字典格式的结果
+}
 
+connection = pymysql.connect(**db_config)
 
-def submit_question(user_id, img, title,content, type, tags):
+def submit_question(user_id, about, title,content, type):
     """
     用户提交问题
     :param user_id: 用户ID
@@ -24,19 +26,19 @@ def submit_question(user_id, img, title,content, type, tags):
         cursor = connection.cursor()
         # 插入问题
         query = """
-        INSERT INTO question (user_id, img, title,content, type,status,created_at)
+        INSERT INTO question (user_id, about, title,content, type,status,created_at)
         VALUES (%s, %s, %s,%s,%s,'pending',NOW());
         """
-        cursor.execute(query, (user_id, img, title,content, type))
+        cursor.execute(query, (user_id, about, title,content, type))
         question_id = cursor.lastrowid  # 获取插入的问题ID
 
-        # 插入标签（假设标签表为 question_tag，包含 question_id 和 tag）
-        for tag in tags:
-            tag_query = """
-            INSERT INTO question_tag (question_id, tag)
-            VALUES (%s, %s);
-            """
-            cursor.execute(tag_query, (question_id, tag))
+        # # 插入标签（假设标签表为 question_tag，包含 question_id 和 tag）
+        # for tag in tags:
+        #     tag_query = """
+        #     INSERT INTO question_tag (question_id, tag)
+        #     VALUES (%s, %s);
+        #     """
+        #     cursor.execute(tag_query, (question_id, tag))
 
         connection.commit()
         cursor.close()
@@ -70,28 +72,29 @@ def get_questions_by_tag(tag):
         print(f"查询问题失败: {e}")
         return []
 
-def get_questions_by_tag(tag):
+def get_question_by_id(id):
     """
-    根据标签查询问题
-    :param tag: 标签名称
+    查询问题详情
+    :param id: 问题id
     :return: 问题列表
     """
     try:
-        cursor = connection.cursor()
-        query = """
-        SELECT q.id, q.content, q.status, q.created_at, u.username
+        # 连接数据库
+        connection = pymysql.connect(**db_config)
+        with connection.cursor() as cursor:
+            # 执行查询
+            sql = """
+        SELECT q.id, q.title, q.about, q.content, q.status, q.type, q.created_at, u.username,u.id AS user_id
         FROM question q
         JOIN user u ON q.user_id = u.id
-        JOIN question_tag qt ON q.id = qt.question_id
-        WHERE qt.tag = %s;
+        WHERE q.id = %s;
         """
-        cursor.execute(query, (tag,))
-        result = cursor.fetchall()
-        cursor.close()
-        return result
-    except Exception as e:
-        print(f"查询问题失败: {e}")
-        return []
+            cursor.execute(sql,(id,))
+            result = cursor.fetchall()  # 获取所有数据
+                    
+    finally:
+        connection.close()  # 关闭数据库连接
+    return result
 
 def get_questions():
     """
@@ -99,19 +102,23 @@ def get_questions():
     :return: 问题列表
     """
     try:
-        cursor = connection.cursor()
-        query = """
-        SELECT q.id, q.title, q.img, q.content, q.status, q.created_at, u.username
+        # 连接数据库
+        connection = pymysql.connect(**db_config)
+        with connection.cursor() as cursor:
+            # 执行查询
+            sql = """
+        SELECT q.id, q.title, q.about, q.content, q.status, q.type, q.created_at, u.username
         FROM question q
         JOIN user u ON q.user_id = u.id
+        ORDER BY q.created_at DESC;
         """
-        cursor.execute(query)
-        result = cursor.fetchall()
-        cursor.close()
-        return result
-    except Exception as e:
-        print(f"查询问题失败: {e}")
-        return []
+            cursor.execute(sql)
+            result = cursor.fetchall()  # 获取所有数据
+                    
+    finally:
+        connection.close()  # 关闭数据库连接
+    return result
+
 
 def submit_comment(user_id, question_id, content, parent_comment_id=None):
     """
@@ -145,20 +152,15 @@ def get_comments_by_question(question_id):
     :return: 评论列表，包含评论及其父评论信息
     """
     try:
-        cursor = connection.cursor(dictionary=True)
+        cursor = connection.cursor()
         query = """
         SELECT 
             c.id AS comment_id,
             c.content AS comment_content,
             c.created_at AS comment_created_at,
-            c.parent_comment_id,
-            pc.content AS parent_comment_content,
-            pc.created_at AS parent_comment_created_at,
-            pc.user_id AS parent_comment_user_id,
-            u.username AS parent_comment_username
+            u.username AS username
         FROM comment c
-        LEFT JOIN comment pc ON c.parent_comment_id = pc.id
-        LEFT JOIN user u ON pc.user_id = u.id
+        LEFT JOIN user u ON c.user_id = u.id
         WHERE c.question_id = %s
         ORDER BY c.created_at ASC;
         """
@@ -166,26 +168,25 @@ def get_comments_by_question(question_id):
         result = cursor.fetchall()
         cursor.close()
 
-        # 格式化结果
-        comments = []
-        for row in result:
-            comment = {
-                "comment_id": row["comment_id"],
-                "comment_content": row["comment_content"],
-                "comment_created_at": row["comment_created_at"],
-                "parent_comment": None
-            }
-            if row["parent_comment_id"]:
-                comment["parent_comment"] = {
-                    "parent_comment_id": row["parent_comment_id"],
-                    "parent_comment_content": row["parent_comment_content"],
-                    "parent_comment_created_at": row["parent_comment_created_at"],
-                    "parent_comment_user_id": row["parent_comment_user_id"],
-                    "parent_comment_username": row["parent_comment_username"]
-                }
-            comments.append(comment)
-
-        return comments
+        # # 格式化结果
+        # comments = []
+        # for row in result:
+        #     comment = {
+        #         "comment_id": row["comment_id"],
+        #         "comment_content": row["comment_content"],
+        #         "comment_created_at": row["comment_created_at"],
+        #         "parent_comment": None
+        #     }
+        #     if row["parent_comment_id"]:
+        #         comment["parent_comment"] = {
+        #             "parent_comment_id": row["parent_comment_id"],
+        #             "parent_comment_content": row["parent_comment_content"],
+        #             "parent_comment_created_at": row["parent_comment_created_at"],
+        #             "parent_comment_user_id": row["parent_comment_user_id"],
+        #             "parent_comment_username": row["parent_comment_username"]
+        #         }
+        #     comments.append(comment)
+        return result
     except Exception as e:
         print(f"查询评论失败: {e}")
         return []
@@ -213,3 +214,71 @@ def update_question_status(question_id, new_status):
         print(f"修改问题状态失败: {e}")
         connection.rollback()
         return False
+
+
+def register_user(username, password, email, role='user', status='active', icon=None):
+    """
+    用户注册
+    :param username: 用户名
+    :param password: 密码
+    :param email: 邮箱
+    :param role: 角色（默认为'user'）
+    :param status: 状态（默认为'active'）
+    :param icon: 头像（可选）
+    :return: 注册成功返回用户ID，失败返回None
+    """
+    try:
+        cursor = connection.cursor()
+        query = """
+        INSERT INTO user (username, password, email, role, status, created_at, icon)
+        VALUES (%s, %s, %s, %s, %s, NOW(), %s);
+        """
+        cursor.execute(query, (username, password, email, role, status, icon))
+        user_id = cursor.lastrowid  # 获取插入的用户ID
+        connection.commit()
+        cursor.close()
+        return user_id
+    except Exception as e:
+        print(f"注册用户失败: {e}")
+        connection.rollback()
+        return None
+
+def login_user(username, password):
+    """
+    用户登录
+    :param username: 用户名
+    :param password: 密码
+    :return: 登录成功返回用户信息，失败返回None
+    """
+    try:
+        cursor = connection.cursor()
+        query = """
+        SELECT * FROM user WHERE username = %s AND password = %s;
+        """
+        cursor.execute(query, (username, password))
+        user = cursor.fetchone()
+        cursor.close()
+        return user
+    except Exception as e:
+        print(f"登录用户失败: {e}")
+        return None
+
+
+def get_user(user_id):
+    """
+    查询用户
+    :param user_id: 用户ID
+    :return: 登录成功返回用户信息，失败返回None
+    """
+    try:
+        cursor = connection.cursor()
+        query = """
+        SELECT * FROM user WHERE id = %s ;
+        """
+        cursor.execute(query, (user_id,))
+        user = cursor.fetchone()
+        cursor.close()
+        return user
+    except Exception as e:
+        print(f"查询用户失败: {e}")
+        return None
