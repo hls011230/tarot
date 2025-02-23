@@ -1,124 +1,69 @@
-import pymysql
-import qrcode
-from flask import jsonify
+from model.models import Session, User, Question, Comment, UserInfo
+from model.models import question_schema,user_schema,comment_schema
+from sqlalchemy.orm import joinedload
 
-db_config = {
-    'host':"localhost",
-    'user':"root",
-    'password':"root",
-    'database':"tarot",
-    'cursorclass': pymysql.cursors.DictCursor  # 返回字典格式的结果
-}
-
-connection = pymysql.connect(**db_config)
-
-def submit_question(user_id, about, title,content, type):
+def submit_question(user_id, about, title, content, type):
     """
     用户提交问题
     :param user_id: 用户ID
-    :param img: 问题图片
+    :param about: 牌阵描述
+    :param title: 问题标题
     :param content: 问题内容
     :param type: 牌阵类型
-    :param tags: 问题标签（列表）
     :return: 插入成功返回问题ID，失败返回None
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        # 插入问题
-        query = """
-        INSERT INTO question (user_id, about, title,content, type,status,created_at)
-        VALUES (%s, %s, %s,%s,%s,'pending',NOW());
-        """
-        cursor.execute(query, (user_id, about, title,content, type))
-        question_id = cursor.lastrowid  # 获取插入的问题ID
-
-        # # 插入标签（假设标签表为 question_tag，包含 question_id 和 tag）
-        # for tag in tags:
-        #     tag_query = """
-        #     INSERT INTO question_tag (question_id, tag)
-        #     VALUES (%s, %s);
-        #     """
-        #     cursor.execute(tag_query, (question_id, tag))
-
-        connection.commit()
-        cursor.close()
-        return question_id
+        question = Question(
+            user_id=user_id,
+            about=about,
+            title=title,
+            content=content,
+            type=type
+        )
+        session.add(question)
+        session.commit()
+        return question.id
     except Exception as e:
         print(f"提交问题失败: {e}")
-        connection.rollback()
+        session.rollback()
         return None
-
-
-def get_questions_by_tag(tag):
-    """
-    根据标签查询问题
-    :param tag: 标签名称
-    :return: 问题列表
-    """
-    try:
-        cursor = connection.cursor()
-        query = """
-        SELECT q.id, q.content, q.status, q.created_at, u.username
-        FROM question q
-        JOIN user u ON q.user_id = u.id
-        JOIN question_tag qt ON q.id = qt.question_id
-        WHERE qt.tag = %s;
-        """
-        cursor.execute(query, (tag,))
-        result = cursor.fetchall()
-        cursor.close()
-        return result
-    except Exception as e:
-        print(f"查询问题失败: {e}")
-        return []
+    finally:
+        session.close()
 
 def get_question_by_id(id):
     """
     查询问题详情
-    :param id: 问题id
-    :return: 问题列表
+    :param id: 问题ID
+    :return: 问题详情
     """
+    session = Session()
     try:
-        # 连接数据库
-        connection = pymysql.connect(**db_config)
-        with connection.cursor() as cursor:
-            # 执行查询
-            sql = """
-        SELECT q.id, q.title, q.about, q.content, q.status, q.type, q.created_at, u.username,u.id AS user_id
-        FROM question q
-        JOIN user u ON q.user_id = u.id
-        WHERE q.id = %s;
-        """
-            cursor.execute(sql,(id,))
-            result = cursor.fetchall()  # 获取所有数据
-                    
+        question = session.query(Question).filter(Question.id == id).first()
+        return question_schema.dump(question)
+    except Exception as e:
+        print(f"查询问题详情失败: {e}")
+        return None
     finally:
-        connection.close()  # 关闭数据库连接
-    return result
+        session.close()    
 
 def get_questions():
     """
     查询所有问题
     :return: 问题列表
     """
+    session = Session()
     try:
-        # 连接数据库
-        connection = pymysql.connect(**db_config)
-        with connection.cursor() as cursor:
-            # 执行查询
-            sql = """
-        SELECT q.id, q.title, q.about, q.content, q.status, q.type, q.created_at, u.username
-        FROM question q
-        JOIN user u ON q.user_id = u.id
-        ORDER BY q.created_at DESC;
-        """
-            cursor.execute(sql)
-            result = cursor.fetchall()  # 获取所有数据
-                    
+        questions = session.query(Question).order_by(Question.created_at.desc()).all()
+        if questions:
+            # 使用 many=True 批量序列化
+            return question_schema.dump(questions, many=True)
+        return []
+    except Exception as e:
+        print(f"查询所有问题失败: {e}")
+        return []
     finally:
-        connection.close()  # 关闭数据库连接
-    return result
-
+        session.close()
 
 def submit_comment(user_id, question_id, content, parent_comment_id=None):
     """
@@ -129,92 +74,61 @@ def submit_comment(user_id, question_id, content, parent_comment_id=None):
     :param parent_comment_id: 父评论ID（可选）
     :return: 插入成功返回评论ID，失败返回None
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        query = """
-        INSERT INTO comment (user_id, question_id, content, parent_comment_id)
-        VALUES (%s, %s, %s, %s);
-        """
-        cursor.execute(query, (user_id, question_id, content, parent_comment_id))
-        comment_id = cursor.lastrowid  # 获取插入的评论ID
-        connection.commit()
-        cursor.close()
-        return comment_id
+        comment = Comment(
+            user_id=user_id,
+            question_id=question_id,
+            content=content,
+            parent_comment_id=parent_comment_id
+        )
+        session.add(comment)
+        session.commit()
+        return comment.id
     except Exception as e:
         print(f"提交评论失败: {e}")
-        connection.rollback()
+        session.rollback()
         return None
+    finally:
+        session.close()
 
 def get_comments_by_question(question_id):
     """
     获取问题的所有评论
     :param question_id: 问题ID
-    :return: 评论列表，包含评论及其父评论信息
+    :return: 评论列表
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        query = """
-        SELECT 
-            c.id AS comment_id,
-            c.content AS comment_content,
-            c.created_at AS comment_created_at,
-            u.username AS username
-        FROM comment c
-        LEFT JOIN user u ON c.user_id = u.id
-        WHERE c.question_id = %s
-        ORDER BY c.created_at ASC;
-        """
-        cursor.execute(query, (question_id,))
-        result = cursor.fetchall()
-        cursor.close()
-
-        # # 格式化结果
-        # comments = []
-        # for row in result:
-        #     comment = {
-        #         "comment_id": row["comment_id"],
-        #         "comment_content": row["comment_content"],
-        #         "comment_created_at": row["comment_created_at"],
-        #         "parent_comment": None
-        #     }
-        #     if row["parent_comment_id"]:
-        #         comment["parent_comment"] = {
-        #             "parent_comment_id": row["parent_comment_id"],
-        #             "parent_comment_content": row["parent_comment_content"],
-        #             "parent_comment_created_at": row["parent_comment_created_at"],
-        #             "parent_comment_user_id": row["parent_comment_user_id"],
-        #             "parent_comment_username": row["parent_comment_username"]
-        #         }
-        #     comments.append(comment)
-        return result
+        comments = session.query(Comment).filter(Comment.question_id == question_id).options(joinedload(Comment.user)).order_by(Comment.created_at.asc()).all()
+        return comment_schema.dump(comments, many=True)
     except Exception as e:
         print(f"查询评论失败: {e}")
         return []
-
+    finally:
+        session.close()
 
 def update_question_status(question_id, new_status):
     """
     修改问题状态
     :param question_id: 问题ID
-    :param new_status: 新状态（'pending', 'published', 'resolved', 'closed'）
+    :param new_status: 新状态（'pending', 'finished', 'answered'）
     :return: 成功返回True，失败返回False
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        query = """
-        UPDATE question
-        SET status = %s
-        WHERE id = %s;
-        """
-        cursor.execute(query, (new_status, question_id))
-        connection.commit()
-        cursor.close()
-        return True
+        question = session.query(Question).filter(Question.id == question_id).first()
+        if question:
+            question.status = new_status
+            session.commit()
+            return True
+        return False
     except Exception as e:
         print(f"修改问题状态失败: {e}")
-        connection.rollback()
+        session.rollback()
         return False
-
+    finally:
+        session.close()
 
 def register_user(username, password, email, role='user', status='active', icon=None):
     """
@@ -227,21 +141,101 @@ def register_user(username, password, email, role='user', status='active', icon=
     :param icon: 头像（可选）
     :return: 注册成功返回用户ID，失败返回None
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        query = """
-        INSERT INTO user (username, password, email, role, status, created_at, icon)
-        VALUES (%s, %s, %s, %s, %s, NOW(), %s);
-        """
-        cursor.execute(query, (username, password, email, role, status, icon))
-        user_id = cursor.lastrowid  # 获取插入的用户ID
-        connection.commit()
-        cursor.close()
-        return user_id
+        user = User(
+            username=username,
+            password=password,
+            email=email,
+            role=role,
+            status=status,
+            icon=icon
+        )
+        session.add(user)
+        session.commit()
+        return user.id
     except Exception as e:
         print(f"注册用户失败: {e}")
-        connection.rollback()
+        session.rollback()
         return None
+    finally:
+        session.close()
+
+def add_user(username, password, email, role='user', status='active', icon=None):
+    """
+    用户注册
+    :param username: 用户名
+    :param password: 密码
+    :param email: 邮箱
+    :param role: 角色（默认为'user'）
+    :param status: 状态（默认为'active'）
+    :param icon: 头像（可选）
+    :return: 注册成功返回用户ID，失败返回None
+    """
+    session = Session()
+    try:
+        user = User(
+            username=username,
+            password=password,
+            email=email,
+            role=role,
+            status=status,
+            icon=icon
+        )
+        session.add(user)
+        session.commit()
+        return user.id
+    except Exception as e:
+        print(f"注册用户失败: {e}")
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
+
+def update_user_info(user_id,updates):
+    """
+    修改用户信息
+    :param user_id: 用户ID
+    :param updates: 包含要更新字段的字典
+    :return: 更新后的用户ID或None（如果更新失败）
+    """
+    session = Session()
+    try:
+        user = session.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+        if user is None:
+            print(f"用户 {user_id} 不存在")
+            return None
+        
+        for key, value in updates.items():
+            setattr(user, key, value)
+        
+        session.commit()
+        return user.id
+    except Exception as e:
+        print(f"更新用户失败: {e}")
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
+def update_user(user_id):
+    """
+    修改用户
+    """
+    session = Session()
+    try:
+        user = session.query(User).filter(User.id == user_id).first()
+        session.delete(user)
+        session.commit()
+        return user.id
+    except Exception as e:
+        print(f"注册用户失败: {e}")
+        session.rollback()
+        return None
+    finally:
+        session.close()
+
 
 def login_user(username, password):
     """
@@ -250,35 +244,62 @@ def login_user(username, password):
     :param password: 密码
     :return: 登录成功返回用户信息，失败返回None
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        query = """
-        SELECT * FROM user WHERE username = %s AND password = %s;
-        """
-        cursor.execute(query, (username, password))
-        user = cursor.fetchone()
-        cursor.close()
-        return user
+        user = session.query(User).filter(User.username == username, User.password == password).first()
+        return user_schema.dump(user)
     except Exception as e:
         print(f"登录用户失败: {e}")
         return None
-
+    finally:
+        session.close()
 
 def get_user(user_id):
     """
     查询用户
     :param user_id: 用户ID
-    :return: 登录成功返回用户信息，失败返回None
+    :return: 用户信息
     """
+    session = Session()
     try:
-        cursor = connection.cursor()
-        query = """
-        SELECT * FROM user WHERE id = %s ;
-        """
-        cursor.execute(query, (user_id,))
-        user = cursor.fetchone()
-        cursor.close()
-        return user
+        user = session.query(User).filter(User.id == user_id).first()
+        return user_schema.dump(user)
     except Exception as e:
         print(f"查询用户失败: {e}")
         return None
+    finally:
+        session.close()
+
+def get_users():
+    """
+    查询所有用户
+    :return: 用户信息
+    """
+    session = Session()
+    try:
+        users = session.query(User).options(joinedload(User.user_info)).all()
+        return user_schema.dump(users,many=True)
+    except Exception as e:
+        print(f"查询用户失败: {e}")
+        return None
+    finally:
+        session.close()
+
+def delete_user(id):
+    """
+    查询所有用户
+    :return: 用户信息
+    """
+    session = Session()
+    try:
+        user = session.query(User).filter(User.id == id).first()
+        if user:
+            # 删除用户（级联删除关联数据）
+            session.delete(user)
+            session.commit()
+        return True
+    except Exception as e:
+        print(f"查询用户失败: {e}")
+        return None
+    finally:
+        session.close()

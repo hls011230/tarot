@@ -66,7 +66,39 @@ def get_user(id):
         # 这里可以添加JWT生成逻辑
         # token = jwt.encode({'user_id': user['id']}, SECRET_KEY, algorithm="HS256")
         return response(data=user, status_code=1)
+
+# 查询所有用户
+@bp.route('/get-users', methods=['GET'])
+def get_users():
+    user = db.get_users()
+    if user is None:
+        return response(data="查询失败", status_code=0)
+    else:
+        # 这里可以添加JWT生成逻辑
+        # token = jwt.encode({'user_id': user['id']}, SECRET_KEY, algorithm="HS256")
+        return response(data=user, status_code=1)
     
+# 删除用户
+@bp.route('/delete-user', methods=['POST'])
+def delete_user():
+    data = request.json
+    user = db.delete_user(data['id'])
+    if user is False:
+        return response(data="删除", status_code=0)
+    else:
+        # 这里可以添加JWT生成逻辑
+        # token = jwt.encode({'user_id': user['id']}, SECRET_KEY, algorithm="HS256")
+        return response(data=user, status_code=1)
+
+# 修改用户
+@bp.route('/update-user-info/<id>', methods=['POST'])
+def update_user(id):
+    data = request.json
+    user = db.update_user_info(id,data)
+    if user is False:
+        return response(data="修改失败", status_code=0)
+    else:
+        return response(data=user, status_code=1)
 
 
 # 提交问题
