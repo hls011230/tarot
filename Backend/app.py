@@ -17,6 +17,6 @@ app = create_app()
 
 # 程序入口
 if __name__ == '__main__':
-    app.run(host="192.168.1.11",port=8080,debug=True)
+    app.run(host="47.120.11.163",port=8080,debug=True)
 
 
