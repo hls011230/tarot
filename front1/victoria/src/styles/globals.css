@@ -1,0 +1,10 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+.text-gold {
+  color: #FFD700; /* 金色 */
+}
+
+body {
+  background-color: #121212; /* 深色背景 */
+  color: #ffffff; /* 白色文字 */
+}

@@ -1,0 +1,53 @@
+/* 课程卡片整体样式 */
+.course-card {
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+    background: linear-gradient(to bottom, #fff, #f8f9fa); /* 渐变背景 */
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* 鼠标悬停时的特效 */
+  .course-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0px 10px 20px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* 课程封面图片 */
+  .course-card-img {
+    height: 200px;
+    object-fit: cover;
+    border-bottom: 3px solid #007bff; /* 添加底部边框，使图片更精致 */
+  }
+  
+  /* 课程标题样式 */
+  .card-title {
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #333;
+  }
+  
+  /* 课程描述文本 */
+  .card-text {
+    font-family: 'Roboto', sans-serif;
+    font-size: 1rem;
+    color: #666;
+  }
+  
+  /* 自定义按钮 */
+  .custom-btn {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    border: none;
+    padding: 10px 20px;
+    font-size: 1rem;
+    border-radius: 25px;
+    transition: all 0.3s ease-in-out;
+    text-align: center;
+  }
+  
+  /* 按钮悬停效果 */
+  .custom-btn:hover {
+    background: linear-gradient(135deg, #0056b3, #004097);
+  }
+  
